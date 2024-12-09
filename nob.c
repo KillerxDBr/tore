@@ -67,10 +67,17 @@ bool build_sqlite3(Nob_Cmd *cmd)
 bool set_environment_variable(const char *name, const char *value)
 {
     nob_log(INFO, "SETENV: %s = %s", name, value);
+#ifdef _WIN32
+    if (!SetEnvironmentVariableA(name, value)) {
+        nob_log(ERROR, "Could not set variable %s: %s", name, nob_win32_error_message(GetLastError()));
+        return false;
+    }
+#else
     if (setenv(name, value, 1) < 0) {
         nob_log(ERROR, "Could not set variable %s: %s", name, strerror(errno));
         return false;
     }
+#endif //_WIN32
     return true;
 }
 
@@ -218,18 +225,25 @@ bool build_tore(Cmd *cmd)
     }
     if (!generate_resource_bundle()) return false;
 
-    char *git_hash = get_git_hash(cmd);
     builder_compiler(cmd);
     builder_common_flags(cmd);
     if (!build_flags[BF_ASAN].value) cmd_append(cmd, "-static");
+    #ifndef _WIN32 // Could not made hash string works on Windows for some reason, skipping by now...
+    char *git_hash = get_git_hash(cmd);
     if (git_hash) {
         cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"%s\"", git_hash));
         free(git_hash);
     } else {
         cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"Unknown\""));
     }
+    #endif // _WIN32
     builder_output(cmd, TORE_BIN_PATH);
     builder_inputs(cmd, SRC_FOLDER"tore.c", SQLITE3_OBJ_PATH);
+
+    #ifdef _WIN32
+    cmd_append(cmd,"-lWs2_32"); // Ws2_32.dll needed for winsock2
+    #endif // _WIN32
+
     if (!nob_cmd_run_sync_and_reset(cmd)) return false;
 
     return true;

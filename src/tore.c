@@ -1,15 +1,29 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include "sqlite3.h"
-
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
 #include "nob.h"
+
+#ifndef GIT_HASH
+#define GIT_HASH "Unknown"
+#endif // GIT_HASH
+
+#ifdef _WIN32
+#include <ws2tcpip.h>
+
+#define SHUT_RD   SD_RECEIVE
+#define SHUT_WR   SD_SEND
+#define SHUT_RDWR SD_BOTH
+
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif // _WIN32
 
 #include "bundle.h"
 
@@ -785,13 +799,19 @@ void render_version_page(String_Builder *sb)
 #undef OUT
 }
 
+#ifdef _WIN32
+#define HOME_ENV "USERPROFILE"
+#else
+#define HOME_ENV "HOME"
+#endif // _WIN32
+
 sqlite3 *open_tore_db(void)
 {
     sqlite3 *result = NULL;
 
-    const char *home_path = getenv("HOME");
+    const char *home_path = getenv(HOME_ENV);
     if (home_path == NULL) {
-        fprintf(stderr, "ERROR: No $HOME environment variable is setup. We need it to find the location of ~/"TORE_FILENAME" database.\n");
+        fprintf(stderr, "ERROR: No $"HOME_ENV" environment variable is setup. We need it to find the location of ~/"TORE_FILENAME" database.\n");
         return_defer(NULL);
     }
 

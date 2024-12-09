@@ -2,3 +2,6 @@ build/
 nob
 nob.old
 TAGS
+nob.exe
+nob.exe.old
+.vscode/
