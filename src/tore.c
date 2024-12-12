@@ -741,6 +741,12 @@ void sb_append_html_escaped_buf(String_Builder *sb, const char *buf, size_t size
     }
 }
 
+#ifdef _WIN32
+#ifdef OUT
+#undef OUT
+#endif
+#endif
+
 void render_index_page(String_Builder *sb, Grouped_Notifications notifs, Reminders reminders)
 {
 #define OUT(buf, size) sb_append_buf(sb, buf, size);
@@ -798,6 +804,10 @@ void render_version_page(String_Builder *sb)
 #undef ESCAPED
 #undef OUT
 }
+
+#ifdef _WIN32
+#define OUT
+#endif
 
 #ifdef _WIN32
 #define HOME_ENV "USERPROFILE"
@@ -963,9 +973,14 @@ bool write_entire_sv(int fd, String_View sv)
 {
     String_View untransfered = sv;
     while (untransfered.count > 0) {
-        ssize_t transfered = write(fd, untransfered.data, untransfered.count);
+        ssize_t transfered = send(fd, untransfered.data, untransfered.count, 0);
         if (transfered < 0) {
-            fprintf(stderr, "ERROR: Could not write response: %s\n", strerror(errno));
+            fprintf(stderr, "ERROR: Could not write response: %s\n",
+            #ifdef _WIN32
+            nob_win32_error_message(WSAGetLastError()));
+            #else
+            strerror(errno));
+            #endif
             return false;
         }
         untransfered.data += transfered;
@@ -1158,7 +1173,7 @@ void serve_request(Serve_Context *sc)
     bool finish = false;
     ssize_t n = 0;
     do {
-        n = read(sc->client_fd, buffer, sizeof(buffer));
+        n = recv(sc->client_fd, buffer, sizeof(buffer), 0);
         if (n <= 0) break;
         sb_append_buf(&sc->request, buffer, n);
         for (; cur < sc->request.count && !finish; cur += 1) {
@@ -1167,7 +1182,12 @@ void serve_request(Serve_Context *sc)
     } while (!finish);
 
     if (n < 0) {
-        fprintf(stderr, "ERROR: could not read request: %s", strerror(errno));
+        fprintf(stderr, "ERROR: could not read request: %s\n",
+        #ifdef _WIN32
+        nob_win32_error_message(WSAGetLastError()));
+        #else
+        strerror(errno));
+        #endif
         return;
     }
 
@@ -1203,6 +1223,10 @@ void serve_request(Serve_Context *sc)
     }
     if (sv_eq(uri, sv_from_cstr("/urmom"))) {
         serve_error(sc, 413);
+        return;
+    }
+    if (sv_eq(uri, sv_from_cstr("/urdad"))) {
+        serve_error(sc, 404);
         return;
     }
     if (sv_starts_with(uri, sv_from_cstr("/notif/"))) {
@@ -1246,9 +1270,22 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
     uint16_t port = DEFAULT_SERVE_PORT;
     if (argc > 0) port = atoi(shift(argv, argc));
 
+#ifdef _WIN32
+    WSADATA wsaData = {0};
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        fprintf(stderr, "ERROR: Could not initialize WinSocket: %s\n", nob_win32_error_message(WSAGetLastError()));
+        return_defer(false);
+    }
+#endif // _WIN32
+
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        fprintf(stderr, "ERROR: Could not create socket epicly: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: Could not create socket epicly: %s\n",
+        #ifdef _WIN32
+        nob_win32_error_message(WSAGetLastError()));
+        #else
+        strerror(errno));
+        #endif
         return_defer(false);
     }
 
@@ -1263,13 +1300,23 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
 
     ssize_t err = bind(server_fd, (struct sockaddr*) &server_addr, sizeof(server_addr));
     if (err != 0) {
-        fprintf(stderr, "ERROR: Could not bind socket epicly: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: Could not bind socket epicly: %s\n",
+        #ifdef _WIN32
+        nob_win32_error_message(WSAGetLastError()));
+        #else
+        strerror(errno));
+        #endif
         return_defer(false);
     }
 
     err = listen(server_fd, 69);
     if (err != 0) {
-        fprintf(stderr, "ERROR: Could not listen to socket, it's too quiet: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: Could not listen to socket, it's too quiet: %s\n",
+        #ifdef _WIN32
+        nob_win32_error_message(WSAGetLastError()));
+        #else
+        strerror(errno));
+        #endif
         return_defer(false);
     }
 
@@ -1278,10 +1325,15 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
     Serve_Context sc = {0};
     for (;;) {
         struct sockaddr_in client_addr;
-        socklen_t client_addrlen = 0;
+        socklen_t client_addrlen = sizeof(struct sockaddr);
         sc.client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_addrlen);
         if (sc.client_fd < 0) {
-            fprintf(stderr, "ERROR: Could not accept connection. This is unacceptable! %s\n", strerror(errno));
+            fprintf(stderr, "ERROR: Could not accept connection. This is unacceptable! %s\n",        
+            #ifdef _WIN32
+            nob_win32_error_message(WSAGetLastError()));
+            #else
+            strerror(errno));
+            #endif
             continue;
         }
 
@@ -1289,7 +1341,7 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
 
         shutdown(sc.client_fd, SHUT_WR);
         char buffer[4096];
-        while (read(sc.client_fd, buffer, sizeof(buffer)) > 0);
+        while (recv(sc.client_fd, buffer, sizeof(buffer), 0) > 0);
         close(sc.client_fd);
         sc_reset(&sc);
         temp_reset();
@@ -1302,6 +1354,9 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
 
 defer:
     // TODO: properly close the sockets on defer
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
     return result;
 }
 
