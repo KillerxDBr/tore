@@ -792,6 +792,7 @@ defer:
 
 void nob_cmd_render(Nob_Cmd cmd, Nob_String_Builder *render)
 {
+    size_t cp = nob_temp_save();
     for (size_t i = 0; i < cmd.count; ++i) {
         const char *arg = cmd.items[i];
         if (arg == NULL) break;
@@ -799,11 +800,17 @@ void nob_cmd_render(Nob_Cmd cmd, Nob_String_Builder *render)
         if (!strchr(arg, ' ')) {
             nob_sb_append_cstr(render, arg);
         } else {
-            nob_da_append(render, '\'');
-            nob_sb_append_cstr(render, arg);
-            nob_da_append(render, '\'');
+            #if _WIN32
+            nob_sb_append_cstr(render, nob_temp_sprintf("\\\"%s\\\"", arg));
+            #else
+            nob_sb_append_cstr(render, nob_temp_sprintf("\"%s\"", arg));
+            #endif
+            // nob_da_append(render, "\\\"");
+            // nob_sb_append_cstr(render, arg);
+            // nob_da_append(render, "\\\"");
         }
     }
+    nob_temp_rewind(cp);
 }
 
 Nob_Proc nob_cmd_run_async_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect)

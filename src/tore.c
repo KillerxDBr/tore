@@ -19,6 +19,14 @@
 #define SHUT_WR   SD_SEND
 #define SHUT_RDWR SD_BOTH
 
+#if !defined(ssize_t) && !defined(__MINGW32__)
+#if defined(_WIN64)
+typedef __int64 ssize_t;
+#else
+typedef long ssize_t;
+#endif
+#endif
+
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -1290,7 +1298,7 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
     }
 
     int option = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&option, sizeof(option));
 
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
@@ -1342,7 +1350,13 @@ bool serve_run(Command *self, const char *program_name, int argc, char **argv)
         shutdown(sc.client_fd, SHUT_WR);
         char buffer[4096];
         while (recv(sc.client_fd, buffer, sizeof(buffer), 0) > 0);
+
+        #ifdef _WIN32
+        closesocket(sc.client_fd);
+        #else
         close(sc.client_fd);
+        #endif
+
         sc_reset(&sc);
         temp_reset();
     }

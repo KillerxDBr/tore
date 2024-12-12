@@ -1,7 +1,10 @@
 build/
+build_other/
+build_win32_mingw64/
 nob
 nob.old
 TAGS
 nob.exe
 nob.exe.old
 .vscode/
+*.log

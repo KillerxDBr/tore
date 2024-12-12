@@ -19,16 +19,36 @@ static Flag build_flags[COUNT_BUILD_FLAGS] = {
     [BF_HELP]  = {.name = "-h",     .description = "Print build flags"},
 };
 
+#ifdef _WIN32
+#define W32_EXT ".exe"
+#else
+#define W32_EXT
+#endif
+
+#ifdef _WIN32
+#ifdef _MSC_VER
+#define PLAT "win32_msvc"
+#else
+#define PLAT "win32_mingw64"
+#endif // _MSC_VER
+#else
+#define PLAT "other"
+#endif	
+
 // Folder must end with forward slash /
-#define BUILD_FOLDER "./build/"
+#define BUILD_FOLDER "./build_"PLAT"/"
 #define SRC_FOLDER "./src/"
 #define SRC_BUILD_FOLDER "./src_build/"
 #define RESOURCES_FOLDER "./resources/"
 #define GIT_HASH_FILE BUILD_FOLDER"git-hash.txt"
-#define TORE_BIN_PATH (build_flags[BF_ASAN].value ? BUILD_FOLDER"tore-asan" : BUILD_FOLDER"tore")
+#define TORE_BIN_PATH (build_flags[BF_ASAN].value ? BUILD_FOLDER"tore-asan"W32_EXT : BUILD_FOLDER"tore"W32_EXT)
 #define SQLITE3_OBJ_PATH (build_flags[BF_ASAN].value ? BUILD_FOLDER"sqlite3-asan.o" : BUILD_FOLDER"sqlite3.o")
 
-#define builder_compiler(cmd) cmd_append(cmd, "clang")
+#if 0 // testing linking with msvc
+#define builder_compiler(cmd) cmd_append(cmd, "clang", "-target", "x86_64-pc-windows-msvc", "-D_CRT_SECURE_NO_WARNINGS", "-D_WINSOCK_DEPRECATED_NO_WARNINGS")
+#else
+#define builder_compiler(cmd) cmd_append(cmd, "gcc")
+#endif
 void builder_common_flags(Cmd *cmd)
 {
     if (build_flags[BF_ASAN].value) cmd_append(cmd, "-fsanitize=address");
@@ -215,7 +235,7 @@ bool build_tore(Cmd *cmd)
     // Templates
     builder_compiler(cmd);
     builder_common_flags(cmd);
-    builder_output(cmd, BUILD_FOLDER"tt");
+    builder_output(cmd, BUILD_FOLDER"tt"W32_EXT);
     builder_inputs(cmd, SRC_BUILD_FOLDER"tt.c");
     if (!cmd_run_sync_and_reset(cmd)) return false;
     for (size_t i = 0; i < ARRAY_LEN(page_templates); ++i) {
@@ -232,12 +252,20 @@ bool build_tore(Cmd *cmd)
     Cmd gitCmd = {0};
     char *git_hash = get_git_hash(&gitCmd);
     cmd_free(gitCmd);
-    
+
     if (git_hash) {
+		#ifdef _WIN32
         cmd_append(cmd, temp_sprintf("-DGIT_HASH=\\\"%s\\\"", git_hash));
+		#else
+		cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"%s\"", git_hash));
+		#endif
         free(git_hash);
     } else {
+		#ifdef _WIN32
         cmd_append(cmd, temp_sprintf("-DGIT_HASH=\\\"Unknown\\\""));
+		#else
+		cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"Unknown\""));
+		#endif
     }
 
     builder_output(cmd, TORE_BIN_PATH);
