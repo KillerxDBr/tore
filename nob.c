@@ -228,15 +228,18 @@ bool build_tore(Cmd *cmd)
     builder_compiler(cmd);
     builder_common_flags(cmd);
     if (!build_flags[BF_ASAN].value) cmd_append(cmd, "-static");
-    #ifndef _WIN32 // Could not made hash string works on Windows for some reason, skipping by now...
-    char *git_hash = get_git_hash(cmd);
+
+    Cmd gitCmd = {0};
+    char *git_hash = get_git_hash(&gitCmd);
+    cmd_free(gitCmd);
+    
     if (git_hash) {
-        cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"%s\"", git_hash));
+        cmd_append(cmd, temp_sprintf("-DGIT_HASH=\\\"%s\\\"", git_hash));
         free(git_hash);
     } else {
-        cmd_append(cmd, temp_sprintf("-DGIT_HASH=\"Unknown\""));
+        cmd_append(cmd, temp_sprintf("-DGIT_HASH=\\\"Unknown\\\""));
     }
-    #endif // _WIN32
+
     builder_output(cmd, TORE_BIN_PATH);
     builder_inputs(cmd, SRC_FOLDER"tore.c", SQLITE3_OBJ_PATH);
 
